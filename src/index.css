@@ -1,0 +1,142 @@
+:root {
+  --plutus-green: #00ff50;
+  --plutus-red: #ff3b30;
+  --plutus-gold: #ffd60a;
+  --plutus-accent: #00ff50;
+}
+
+:root,
+:root[data-theme="dark"] {
+  --plutus-bg: #000000;
+  --plutus-card: #000000;
+  --plutus-text: #ffffff;
+  --plutus-text-inverse: #000000;
+  --plutus-sub: #8e8e93;
+  --plutus-border: #1c1c1e;
+  --plutus-nav-bg: #000000;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --plutus-bg: #ffffff;
+  --plutus-card: #ffffff;
+  --plutus-text: #000000;
+  --plutus-text-inverse: #ffffff;
+  --plutus-sub: #6b7280;
+  --plutus-border: #e5e7eb;
+  --plutus-nav-bg: #ffffff;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--plutus-bg);
+  color: var(--plutus-text);
+  font-family: Arial, sans-serif;
+  overflow-x: hidden;
+}
+
+#root {
+  width: min(100%, 1126px);
+  margin: 0 auto;
+  min-height: 100svh;
+  border-inline: 1px solid var(--plutus-border);
+}
+
+.popular-pill {
+  will-change: transform;
+}
+
+.live-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #ff3b30;
+  box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7);
+  animation: livePulse 1.3s infinite;
+}
+
+@keyframes livePulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.65);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(255, 59, 48, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 59, 48, 0);
+  }
+}
+
+.chart-skeleton {
+  position: relative;
+}
+
+.skeleton-block {
+  position: relative;
+  overflow: hidden;
+  background: rgba(142, 142, 147, 0.16);
+}
+
+.skeleton-block::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.07) 46%,
+    rgba(255, 255, 255, 0.16) 50%,
+    rgba(255, 255, 255, 0.07) 54%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: translateX(-100%);
+  animation: skeletonSweep 1.7s ease-in-out infinite;
+}
+
+.chart-skeleton-shimmer {
+  animation: chartSkeletonShimmer 1.7s ease-in-out infinite;
+}
+
+@keyframes skeletonSweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes chartSkeletonShimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-block::after {
+    animation: none;
+    transform: translateX(0);
+    opacity: 0.4;
+  }
+
+  .chart-skeleton-shimmer {
+    animation: none;
+    transform: translateX(0);
+    opacity: 0.5;
+  }
+}
+
+@media (max-width: 680px) {
+  #root {
+    width: 100%;
+    border-inline: none;
+  }
+}

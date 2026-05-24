@@ -1,0 +1,44 @@
+{
+  "entities": {
+    "Portfolio": {
+      "title": "Portfolio",
+      "description": "User cash balance, watchlist, and portfolio metadata",
+      "type": "object",
+      "properties": {
+        "clientId": { "type": "string" },
+        "userId": { "type": "string" },
+        "cash": { "type": "number" },
+        "watchlist": { "type": "array" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["cash", "watchlist", "updatedAt"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "A single stock buy or sell transaction",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clientId": { "type": "string" },
+        "userId": { "type": "string" },
+        "symbol": { "type": "string" },
+        "type": { "type": "string", "enum": ["buy", "sell"] },
+        "shares": { "type": "number" },
+        "price": { "type": "number" },
+        "total": { "type": "number" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["id", "symbol", "type", "shares", "price", "total", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/portfolios/{portfolioId}": {
+      "schema": "Portfolio",
+      "description": "User portfolios indexed by either clientId or authenticated userId"
+    },
+    "/portfolios/{portfolioId}/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Individual buy and sell transactions under a portfolio"
+    }
+  }
+}

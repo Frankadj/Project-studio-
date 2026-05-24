@@ -1,0 +1,6 @@
+{
+  "name": "Wallflake Market Explorer",
+  "description": "An application to explore data from the Wallflake API.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

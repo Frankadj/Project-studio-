@@ -1,0 +1,207 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title>GSE Stock Feed</title>
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.4.0/css/font-awesome.min.css">
+<link rel="stylesheet" href="css/ticker.css?v1.0.0" />
+
+<style type="text/css">
+html,body,h1,h2,h3,h4,h5,h6{font-family: 'Quicksand', sans-serif;}
+.mt-news li{
+	color: #fff !important;
+}
+.feeds-board{
+	display:inline-block
+}
+.feeds-desc{
+	float:left;
+}
+.feeds-desc .feed-type{
+	color:#fff;
+	float:left
+}
+.feeds-desc .feed-date{
+	margin:0;
+	padding:0
+}
+.newsticker{
+	padding-top:5px
+}
+.feeds-controls{
+	margin:0 auto
+}
+.feeds-controls i{
+	color:#fff;
+	/*font-size:11px*/
+}
+.feeds-controls i:hover{
+	color:#D2AC67;
+	cursor:pointer
+}
+.sharePrice {
+	font-family: Quicksand, sans-serif;
+	font-size: x-small;
+	list-style-type: none;
+	margin: 0;
+	padding: 0;
+	text-align:center; color:#fff; 
+}
+
+.sharePrice div{
+    margin: 0 10px 0;
+}
+ .down {
+    color: red; padding-right:15px;
+   background-image:url(../images/arrow-d.gif); background-repeat:no-repeat; background-position:right; 
+}
+ .up {
+    color: green;padding-right:15px;
+   background-image:url(../images/arrow-u.gif); background-repeat:no-repeat; background-position:right;  
+}
+ .equ {
+	padding-right:15px;
+	color:#00C;
+	background-image:url(../images/arrow-s.gif);
+	background-repeat:no-repeat;
+	background-position:right;
+}
+ .quote {
+	margin: 0;
+	font-weight: bold;
+	color:#fff;
+	padding-left:10px;
+}
+
+.volumeTraded{ font-family: Quicksand, sans-serif;
+    font-size: x-small;
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+	color:#fff; 
+   }
+.volumeTraded .quote{  text-align:center; border-left:none}
+
+.mt-news .quote {
+	margin: 0;
+	font-weight: bold;
+	color:#fff;
+	padding-left:10px;
+}
+.mt-news span{
+	/*color:#C2771F*/
+}
+.mt-news .volumeTraded{ font-family: Quicksand, sans-serif;
+    font-size: x-small;
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+	color:#fff; 
+   }
+.mt-news   .sharePrice {
+	font-family: Quicksand, sans-serif;
+	font-size: x-small;
+	list-style-type: none;
+	margin: 0;
+	padding: 0;
+	text-align:center; 
+	color:#fff; 
+}
+.mt-news p{
+   /*font-size:11px;*/
+   font-family:Quicksand, sans-serif;
+}
+.mt-news p.top{
+	padding-right:20px; 
+	margin:5px auto 0 auto;
+}
+.mt-news p.bottom{
+	text-align:center;
+	margin-top:0
+}
+.fa-arrow-down{
+	color:red
+}
+.fa-arrow-up{
+	color:green
+}
+.mt-play{
+	background-color:transparent;
+}
+.mt-next, .mt-prev{
+	background-color:transparent;
+}
+</style>
+</head>
+<body>
+<div class="ticker1 modern-ticker mt-round">
+   <div class="mt-body">
+     <div class="mt-news">
+     	<ul>
+		 <li class='date-part'><p class='top' style='text-align:right'>Share Price @&nbsp;<span id='ticker_date'>11-MAY-26</span>:</p><p class='bottom' style='text-align:right; padding-right:20px'>Volume Traded:</p>
+					</li><li id="AADS"><p class='top'><b>AADS</b>&nbsp;0.42,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="ACCESS"><p class='top'><b>ACCESS</b>&nbsp;30.60,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="ADB"><p class='top'><b>ADB</b>&nbsp;5.30,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="AGA"><p class='top'><b>AGA</b>&nbsp;37.00,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="ALLGH"><p class='top'><b>ALLGH</b>&nbsp;8.46,&nbsp;0.662</p><p class='bottom'>40123</p></li><li id="ALW"><p class='top'><b>ALW</b>&nbsp;0.10,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="ASG"><p class='top'><b>ASG</b>&nbsp;8.89,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="BOPP"><p class='top'><b>BOPP</b>&nbsp;85.50,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="CAL"><p class='top'><b>CAL</b>&nbsp;0.81,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="CLYD"><p class='top'><b>CLYD</b>&nbsp;1.64,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="CMLT"><p class='top'><b>CMLT</b>&nbsp;0.14,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="CPC"><p class='top'><b>CPC</b>&nbsp;0.12,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="DASPHARMA"><p class='top'><b>DASPHARMA</b>&nbsp;0.41,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="DIGICUT"><p class='top'><b>DIGICUT</b>&nbsp;0.09,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="EGH"><p class='top'><b>EGH</b>&nbsp;48.85,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="EGL"><p class='top'><b>EGL</b>&nbsp;10.64,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="ETI"><p class='top'><b>ETI</b>&nbsp;1.51,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="FAB"><p class='top'><b>FAB</b>&nbsp;7.97,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="FML"><p class='top'><b>FML</b>&nbsp;13.93,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="GCB"><p class='top'><b>GCB</b>&nbsp;40.00,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="GGBL"><p class='top'><b>GGBL</b>&nbsp;14.96,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="GLD"><p class='top'><b>GLD</b>&nbsp;497.01,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="GOIL"><p class='top'><b>GOIL</b>&nbsp;7.95,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="HORDS"><p class='top'><b>HORDS</b>&nbsp;0.10,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="IIL"><p class='top'><b>IIL</b>&nbsp;0.05,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="MAC"><p class='top'><b>MAC</b>&nbsp;5.20,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="MMH"><p class='top'><b>MMH</b>&nbsp;0.10,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="MTNGH"><p class='top'><b>MTNGH</b>&nbsp;6.64,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="PBC"><p class='top'><b>PBC</b>&nbsp;0.02,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="RBGH"><p class='top'><b>RBGH</b>&nbsp;5.50,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="SAMBA"><p class='top'><b>SAMBA</b>&nbsp;0.55,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="SCB"><p class='top'><b>SCB</b>&nbsp;71.38,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="SCBPREF"><p class='top'><b>SCBPREF</b>&nbsp;0.90,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="SIC"><p class='top'><b>SIC</b>&nbsp;5.98,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="SOGEGH"><p class='top'><b>SOGEGH</b>&nbsp;6.39,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="TBL"><p class='top'><b>TBL</b>&nbsp;1.20,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="TLW"><p class='top'><b>TLW</b>&nbsp;11.92,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="TOTAL"><p class='top'><b>TOTAL</b>&nbsp;34.89,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="UNIL"><p class='top'><b>UNIL</b>&nbsp;30.00,&nbsp;0.0</p><p class='bottom'>0</p></li><li id="ZEN"><p class='top'><b>ZEN</b>&nbsp;7.47,&nbsp;0.111</p><p class='bottom'>27955</p></li>        </ul>
+	</div>
+  <div class="mt-controls"><div class="mt-prev"></div><div class="mt-play"></div><div class="mt-next"></div></div><!--mt-controls-->
+  </div>
+</div>
+<div id="feedDat"></div>
+</body>
+<script src="js/jquery.min.js"></script>
+<script src="js/jquery.ticker.min.js"></script>
+ <script type="text/javascript">
+		   $(function(){
+			   $(".ticker1").modernTicker({
+				   effect:"scroll",
+				   scrollType:"continuous",
+				   scrollStart:"inside",
+				   scrollInterval:20,
+				   transitionTime:500,
+				   autoplay:true
+				   });
+			   })
+</script>
+<script>
+$(document).ready(function() {
+ function vfeeds(){
+	
+	 $.get("feed.php", function(data){
+	 	var feed_dat = JSON.parse(data);
+  		jQuery.each( feed_dat, function( i, val ) {
+		  
+		  $("li#" + val.company_code).remove();
+		  $("#ticker_date").remove();
+		  var cp;
+		  if(val.change_price < 0){
+				cp = val.change_price+"<i class='fa fa-arrow-down'></i>&nbsp;";
+			}
+		else if(val.change_price > 0){
+				cp = val.change_price+"<i class='fa fa-arrow-up'></i>&nbsp;";
+			}else{
+				cp = val.change_price;
+			}
+		  var str="";
+		  var str_date="";
+		  str += '<li id="'+ val.company_code +'">';
+				str += "<p class='top'><b>"+ val.company_code +"</b>&nbsp;"+val.closing_price+",&nbsp;"+cp+"</p>";
+				str += "<p class='bottom'>"+ val.volume_traded+"</p>";
+			str += '</li>';
+		 
+		  $(".mt-news ul").append(str);
+		  $(".date-part p.top").html("Share Price @&nbsp;"+ val.fdate);
+		});
+	});
+ }
+ var dt = new Date();
+ 
+         setInterval(function(){
+         	if(dt.getHours() >= 10 && dt.getHours() <=17 ){
+        	 vfeeds();
+        	 
+         	}
+         }, 600000);
+	
+});
+
+</script>
+</html>
