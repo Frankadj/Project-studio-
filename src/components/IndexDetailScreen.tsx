@@ -43,9 +43,11 @@ function useAnimatedNumber(target: number, duration = 120) {
     const delta = target - startValue;
 
     if (Math.abs(delta) < 0.0001) {
-      setDisplayValue(target);
-      currentValueRef.current = target;
-      return;
+      const handle = requestAnimationFrame(() => {
+        setDisplayValue(target);
+        currentValueRef.current = target;
+      });
+      return () => cancelAnimationFrame(handle);
     }
 
     let frameId = 0;

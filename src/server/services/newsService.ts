@@ -79,7 +79,7 @@ const SOURCES: NewsSource[] = [
   {
     name: "News Ghana",
     url: "https://newsghana.com.gh/feed/",
-    fallbackUrl: "https://www.modernghana.com/rss/news.xml",
+    fallbackUrl: "https://thebftonline.com/feed/",
     filter: (item: FeedItem) => {
       const cats = item.categories || [];
       return cats.some((c: string) =>

@@ -127,35 +127,51 @@ export function initDatabase() {
     db.prepare("INSERT INTO accounts (id, cash_balance) VALUES (1, 100000.0)").run();
   }
 
-  // Create transactions table
+  // Create transactions table (Transaction-Ledger Architecture)
   db.exec(`
     CREATE TABLE IF NOT EXISTS transactions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      account_id INTEGER NOT NULL DEFAULT 1,
+      user_id INTEGER NOT NULL DEFAULT 1,
       symbol TEXT NOT NULL,
       type TEXT NOT NULL,
       shares REAL NOT NULL,
-      price REAL NOT NULL,
-      timestamp TEXT NOT NULL,
-      FOREIGN KEY(symbol) REFERENCES companies(symbol),
-      FOREIGN KEY(account_id) REFERENCES accounts(id)
+      price_per_share REAL NOT NULL,
+      transaction_date TEXT NOT NULL,
+      fees REAL NOT NULL DEFAULT 0,
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(symbol) REFERENCES companies(symbol)
     )
   `);
+
+  try {
+    db.exec(`ALTER TABLE transactions ADD COLUMN notes TEXT`);
+  } catch(e) {}
+  
+  try {
+    db.exec(`ALTER TABLE transactions ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`);
+  } catch(e) {}
+
 
   // Create portfolio_snapshots table
   db.exec(`
     CREATE TABLE IF NOT EXISTS portfolio_snapshots (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      account_id INTEGER NOT NULL DEFAULT 1,
+      user_id INTEGER NOT NULL DEFAULT 1,
       timestamp TEXT NOT NULL,
-      total_portfolio_value REAL NOT NULL,
+      portfolio_value REAL NOT NULL,
       cash_balance REAL NOT NULL,
       invested_value REAL NOT NULL,
-      total_return REAL NOT NULL,
-      daily_return REAL NOT NULL,
-      FOREIGN KEY(account_id) REFERENCES accounts(id)
+      total_return REAL NOT NULL
     )
   `);
+
+  try {
+    db.exec(`ALTER TABLE portfolio_snapshots ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`);
+  } catch(e) {}
+  try {
+    db.exec('ALTER TABLE portfolio_snapshots RENAME COLUMN snapshot_date TO timestamp');
+  } catch(e) {}
 
   // Backfill portfolio snapshots for the last 90 days if the table is empty
   const snapshotsCountRow = db.prepare("SELECT COUNT(*) as count FROM portfolio_snapshots").get() as { count: number } | undefined;
@@ -163,8 +179,8 @@ export function initDatabase() {
   if (snapshotsCount === 0) {
     const insertSnapshot = db.prepare(`
       INSERT INTO portfolio_snapshots (
-        account_id, timestamp, total_portfolio_value, cash_balance, invested_value, total_return, daily_return
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        user_id, timestamp, portfolio_value, cash_balance, invested_value, total_return
+      ) VALUES (?, ?, ?, ?, ?, ?)
     `);
     
     const now = new Date();
@@ -172,7 +188,7 @@ export function initDatabase() {
       for (let i = 90; i >= 1; i--) {
         const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
         const iso = date.toISOString().replace('T', ' ').substring(0, 19);
-        insertSnapshot.run(1, iso, 100000.0, 100000.0, 0.0, 0.0, 0.0);
+        insertSnapshot.run(1, iso, 100000.0, 100000.0, 0.0, 0.0);
       }
     })();
   }

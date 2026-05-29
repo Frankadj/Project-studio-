@@ -3,7 +3,7 @@ type CacheEnvelope<T> = {
   expiresAt: number;
 };
 
-const STOCK_PAGE_CACHE_PREFIX = "plutus_stock_page_v2:";
+const STOCK_PAGE_CACHE_PREFIX = "plutus_stock_page_v3:";
 
 function makeCacheKey(kind: string, symbol: string, suffix = "") {
   const safeSymbol = String(symbol || "").toUpperCase().trim();

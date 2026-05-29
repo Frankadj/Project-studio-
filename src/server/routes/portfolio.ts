@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { buildPortfolio, getAccountCashBalance, updateAccountCashBalance, generatePortfolioSnapshot } from "../services/portfolioService.js";
-import { getLatestPrice } from "../services/pricingService.js";
+import { buildPortfolio, generatePortfolioSnapshot } from "../services/portfolioService.js";
 import { addTransaction, getTransactions, calculateHoldings } from "../services/holdingsService.js";
 import { db } from "../database/index.js";
+import { generateHistoricalPortfolioChart } from "../services/portfolioHistoryService.js";
 
 const router = Router();
 
@@ -15,67 +15,28 @@ router.get("/", (req, res) => {
   }
 });
 
-router.post("/trade/buy", (req, res) => {
+router.post("/transaction", (req, res) => {
   try {
-    const { symbol, shares } = req.body;
-    if (!symbol || !shares || shares <= 0) {
-      return res.status(400).json({ error: "Invalid request" });
+    const { symbol, type, shares, price_per_share, transaction_date, fees, notes } = req.body;
+    
+    if (!symbol || !type || !shares || shares <= 0 || !price_per_share || price_per_share < 0) {
+      return res.status(400).json({ error: "Invalid transaction details" });
     }
 
-    const priceData = getLatestPrice(symbol);
-    if (!priceData || priceData.price <= 0) {
-      return res.status(400).json({ error: "Invalid symbol or price not available" });
+    if (type !== "BUY" && type !== "SELL") {
+      return res.status(400).json({ error: "Transaction type must be BUY or SELL" });
     }
 
-    const cost = priceData.price * shares;
-    const cash = getAccountCashBalance(1);
-
-    if (cash < cost) {
-      return res.status(400).json({ error: "Insufficient buying power" });
-    }
-
-    updateAccountCashBalance(1, cash - cost);
-    addTransaction(1, symbol, "BUY", shares, priceData.price);
+    // Allow selling short? The prompt doesn't say, but typical trackers just add it.
+    // For now, we'll just add the transaction straight away.
+    const dateToStore = transaction_date ? new Date(transaction_date).toISOString() : new Date().toISOString();
+    
+    addTransaction(1, symbol, type as "BUY"| "SELL", shares, price_per_share, dateToStore, fees || 0, notes || null);
     
     // trigger snapshot update
     generatePortfolioSnapshot(1);
 
-    res.json({ success: true, message: "Trade executed" });
-  } catch(error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-router.post("/trade/sell", (req, res) => {
-  try {
-    const { symbol, shares } = req.body;
-    if (!symbol || !shares || shares <= 0) {
-      return res.status(400).json({ error: "Invalid request" });
-    }
-
-    const txs = getTransactions(1);
-    const holdings = calculateHoldings(txs);
-    const holding = holdings[symbol];
-
-    if (!holding || holding.shares < shares) {
-      return res.status(400).json({ error: "Insufficient shares" });
-    }
-
-    const priceData = getLatestPrice(symbol);
-    if (!priceData || priceData.price <= 0) {
-      return res.status(400).json({ error: "Invalid symbol or price not available" });
-    }
-
-    const proceeds = priceData.price * shares;
-    const cash = getAccountCashBalance(1);
-
-    updateAccountCashBalance(1, cash + proceeds);
-    addTransaction(1, symbol, "SELL", shares, priceData.price);
-
-    // trigger snapshot update
-    generatePortfolioSnapshot(1);
-
-    res.json({ success: true, message: "Trade executed" });
+    res.json({ success: true, message: "Transaction added" });
   } catch(error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -93,39 +54,8 @@ router.get("/history", (req, res) => {
 router.get("/chart", (req, res) => {
   try {
     const range = (req.query.range as string) || "1M";
-    
-    let days = 30; // default 1M
-    switch(range) {
-      case "1W": days = 7; break;
-      case "1M": days = 30; break;
-      case "3M": days = 90; break;
-      case "6M": days = 180; break;
-      case "1Y": days = 365; break;
-      case "5Y": days = 365 * 5; break;
-      case "ALL": days = 365 * 10; break;
-    }
-
-    const snapshots = db.prepare(`
-      SELECT timestamp, total_portfolio_value, cash_balance, invested_value
-      FROM portfolio_snapshots
-      WHERE account_id = 1 AND timestamp >= datetime('now', ?)
-      ORDER BY timestamp ASC
-    `).all(`-${days} days`) as any[];
-
-    res.json(snapshots.map(s => {
-      const holdingsValue = Math.max(0, s.total_portfolio_value - s.cash_balance);
-      const costBasis = s.invested_value || 0;
-      const holdingsReturn = holdingsValue - costBasis;
-      const holdingsReturnPercent = costBasis > 0 ? (holdingsReturn / costBasis) * 100 : 0;
-      return {
-        timestamp: s.timestamp,
-        totalPortfolioValue: s.total_portfolio_value,
-        cashBalance: s.cash_balance,
-        holdingsValue,
-        holdingsReturn,
-        holdingsReturnPercent
-      };
-    }));
+    const chartData = generateHistoricalPortfolioChart(1, range);
+    res.json(chartData);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -140,28 +70,31 @@ router.post("/restore", (req, res) => {
 
     db.transaction(() => {
       // Clear existing transactions
-      db.prepare("DELETE FROM transactions WHERE account_id = 1").run();
+      db.prepare("DELETE FROM transactions WHERE user_id = 1").run();
       // Clear existing snapshots
-      db.prepare("DELETE FROM portfolio_snapshots WHERE account_id = 1").run();
-      // Update cash balance
+      db.prepare("DELETE FROM portfolio_snapshots WHERE user_id = 1").run();
+      // Update cash balance (keeping it around in accounts table but not relying on it for transaction limits)
       db.prepare("UPDATE accounts SET cash_balance = ? WHERE id = 1").run(cash);
 
       // Re-insert transactions
       const insertTx = db.prepare(`
-        INSERT INTO transactions (account_id, symbol, type, shares, price, timestamp)
-        VALUES (1, ?, ?, ?, ?, ?)
+        INSERT INTO transactions (user_id, symbol, type, shares, price_per_share, transaction_date, fees, notes, created_at)
+        VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       for (const tx of transactions) {
         const symbol = String(tx.symbol).toUpperCase();
         const type = String(tx.type).toUpperCase() === "SELL" ? "SELL" : "BUY";
         const shares = Number(tx.shares);
-        const price = Number(tx.price);
+        // support both old and new payload format
+        const price = typeof tx.price_per_share === "number" ? Number(tx.price_per_share) : Number(tx.price);
+        
         // Ensure accurate formatted SQLite timestamp
-        const txDate = tx.timestamp ? new Date(tx.timestamp) : new Date();
+        const txDateRaw = tx.transaction_date || tx.timestamp;
+        const txDate = txDateRaw ? new Date(txDateRaw) : new Date();
         const timestampIso = txDate.toISOString().replace('T', ' ').substring(0, 19);
         
-        insertTx.run(symbol, type, shares, price, timestampIso);
+        insertTx.run(symbol, type, shares, price, timestampIso, tx.fees || 0, tx.notes || null, new Date().toISOString());
       }
 
       // Backfill 90 days of baseline $100,000 snapshots so we have historical context for charts
@@ -169,14 +102,14 @@ router.post("/restore", (req, res) => {
       const now = new Date();
       const insertSnapshot = db.prepare(`
         INSERT INTO portfolio_snapshots (
-          account_id, timestamp, total_portfolio_value, cash_balance, invested_value, total_return, daily_return
-        ) VALUES (1, ?, ?, ?, ?, ?, ?)
+          user_id, timestamp, portfolio_value, cash_balance, invested_value, total_return
+        ) VALUES (1, ?, ?, ?, ?, ?)
       `);
 
       for (let i = 90; i >= 1; i--) {
         const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
         const iso = date.toISOString().replace('T', ' ').substring(0, 19);
-        insertSnapshot.run(1, iso, defaultCash, defaultCash, 0.0, 0.0, 0.0);
+        insertSnapshot.run(1, iso, defaultCash, defaultCash, 0.0, 0.0);
       }
     })();
 

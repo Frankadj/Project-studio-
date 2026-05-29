@@ -3,7 +3,6 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import StockList from "./components/StockList";
 import StockDetail from "./components/StockDetail";
 import PortfolioCard from "./components/PortfolioCard";
-import BuyingPowerCard from "./components/BuyingPowerCard";
 import WatchlistSection from "./components/WatchlistSection";
 import HomeHeader from "./components/HomeHeader";
 import BottomNav from "./components/BottomNav";
@@ -19,6 +18,7 @@ import AlertToastStack, {
   type AlertToastItem,
 } from "./components/AlertToastStack";
 import { getApiBase } from "./lib/api";
+import { DEFAULT_MARKET_CATEGORY, type MarketCategoryKey } from "./utils/marketCategories";
 
 import {
   deriveStockChangePercent,
@@ -34,7 +34,8 @@ import {
   subscribeNotifications,
   addNotification,
 } from "./lib/notifications";
-import NotificationsPanel from "./components/NotificationsPanel";
+import NotificationsScreen from "./components/NotificationsScreen";
+import TransactionScreen from "./components/TransactionScreen";
 import {
   applyThemeMode,
   persistThemeMode,
@@ -174,6 +175,13 @@ function App() {
     useState<Stock | null>(null);
   const [selectedStockReturnKey, setSelectedStockReturnKey] =
     useState<string>("home");
+  const [stockHistoryStack, setStockHistoryStack] = useState<
+    { symbol: string; snapshot: Stock; returnKey: string }[]
+  >([]);
+  const [marketActiveCategory, setMarketActiveCategory] = useState<MarketCategoryKey>(
+    DEFAULT_MARKET_CATEGORY
+  );
+  const [marketSearchText, setMarketSearchText] = useState("");
   const [indices, setIndices] = useState<IndexSummary[]>([]);
   const [selectedIndexCode, setSelectedIndexCode] = useState<string | null>(null);
   const [selectedIndexSnapshot, setSelectedIndexSnapshot] =
@@ -181,7 +189,8 @@ function App() {
   const [showNewsScreen, setShowNewsScreen] = useState(false);
   const [showBreakdownScreen, setShowBreakdownScreen] = useState(false);
   const [showHeatmapScreen, setShowHeatmapScreen] = useState(false);
-  const [showNotificationsPanel, setShowNotificationsPanel] = useState(false);
+  const [showNotificationsScreen, setShowNotificationsScreen] = useState(false);
+  const [transactionScreenSymbol, setTransactionScreenSymbol] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(() => getUnreadNotificationsCount());
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -964,17 +973,40 @@ function App() {
     const symbol =
       normalizedStock.symbol || normalizedStock.ticker || normalizedStock.code || "";
 
-    saveScrollPosition(returnKey);
+    saveScrollPosition(activeScreenKey);
     queueScrollReset();
+
+    if (selectedStockSymbol && selectedStockSnapshot) {
+      setStockHistoryStack((prev) => [
+        ...prev,
+        {
+          symbol: selectedStockSymbol,
+          snapshot: selectedStockSnapshot,
+          returnKey: selectedStockReturnKey,
+        },
+      ]);
+    }
+
     setSelectedStockReturnKey(returnKey);
     setSelectedStockSymbol(symbol);
     setSelectedStockSnapshot(normalizedStock);
   };
 
   const handleBack = () => {
-    queueScrollRestore(selectedStockReturnKey || activeTab);
-    setSelectedStockSymbol(null);
-    setSelectedStockSnapshot(null);
+    if (stockHistoryStack.length > 0) {
+      const nextStack = [...stockHistoryStack];
+      const prevStockInfo = nextStack.pop()!;
+      setStockHistoryStack(nextStack);
+
+      queueScrollRestore(selectedStockReturnKey || activeTab);
+      setSelectedStockSymbol(prevStockInfo.symbol);
+      setSelectedStockSnapshot(prevStockInfo.snapshot);
+      setSelectedStockReturnKey(prevStockInfo.returnKey);
+    } else {
+      queueScrollRestore(selectedStockReturnKey || activeTab);
+      setSelectedStockSymbol(null);
+      setSelectedStockSnapshot(null);
+    }
   };
 
   const handleSelectIndex = (index: IndexSummary) => {
@@ -1023,6 +1055,28 @@ function App() {
     setShowHeatmapScreen(false);
   };
 
+  const handleOpenNotificationsScreen = () => {
+    saveScrollPosition(activeTab);
+    queueScrollReset();
+    setShowNotificationsScreen(true);
+  };
+
+  const handleCloseNotificationsScreen = () => {
+    queueScrollRestore(activeTab);
+    setShowNotificationsScreen(false);
+  };
+
+  const handleOpenTransactionScreen = (symbol: string) => {
+    saveScrollPosition(activeTab);
+    queueScrollReset();
+    setTransactionScreenSymbol(symbol);
+  };
+
+  const handleCloseTransactionScreen = () => {
+    queueScrollRestore(activeTab);
+    setTransactionScreenSymbol(null);
+  };
+
   const handleChangeTab = (tab: "home" | "market" | "profile") => {
     if (tab === activeTab) {
       return;
@@ -1031,6 +1085,12 @@ function App() {
     saveScrollPosition(activeTab);
     queueScrollReset();
     setActiveTab(tab);
+    setStockHistoryStack([]);
+
+    if (tab === "market") {
+      setMarketActiveCategory(DEFAULT_MARKET_CATEGORY);
+      setMarketSearchText("");
+    }
   };
 
   const alertToastStack = (
@@ -1046,20 +1106,35 @@ function App() {
     );
   }
 
+  if (transactionScreenSymbol) {
+    return (
+      <>
+        <TransactionScreen
+          symbol={transactionScreenSymbol}
+          onBack={handleCloseTransactionScreen}
+          onSuccess={() => {
+            refreshPortfolio();
+            handleCloseTransactionScreen();
+          }}
+        />
+        {alertToastStack}
+      </>
+    );
+  }
+
   if (selectedStock) {
     return (
       <>
         <StockDetail
           stock={selectedStock}
+          stocks={stocks}
+          onSelect={handleSelectStock}
           onBack={handleBack}
-          cash={cash}
-          setCash={setCash}
           positions={positions}
-          setPositions={setPositions}
-          transactions={transactions}
-          setTransactions={setTransactions}
+          hasTransactions={transactions.some(t => t.symbol === resolveStockSymbol(selectedStock))}
           isInWatchlist={watchlistSymbols.includes(resolveStockSymbol(selectedStock))}
           onToggleWatchlist={toggleWatchlistSymbol}
+          onNavigateToTransaction={handleOpenTransactionScreen}
         />
         {alertToastStack}
       </>
@@ -1102,6 +1177,15 @@ function App() {
     );
   }
 
+  if (showNotificationsScreen) {
+    return (
+      <>
+        <NotificationsScreen onBack={handleCloseNotificationsScreen} />
+        {alertToastStack}
+      </>
+    );
+  }
+
   if (showHeatmapScreen) {
     return (
       <>
@@ -1125,17 +1209,15 @@ function App() {
             indices={indices}
             indicesError={indicesError}
             onSelectIndex={handleSelectIndex}
-            onOpenNotifications={() => setShowNotificationsPanel(true)}
+            onOpenNotifications={handleOpenNotificationsScreen}
           />
           <PortfolioCard
             stocks={stocks}
             positions={positions}
             transactions={transactions}
-            cash={cash}
             apiBase={apiBase}
             onOpenBreakdown={handleOpenBreakdownScreen}
           />
-          <BuyingPowerCard cash={cash} />
 
           <div
             style={{
@@ -1250,6 +1332,10 @@ function App() {
           apiBase={apiBase}
           onOpenHeatmap={handleOpenHeatmapScreen}
           onSelect={handleSelectStock}
+          activeCategory={marketActiveCategory}
+          setActiveCategory={setMarketActiveCategory}
+          search={marketSearchText}
+          setSearch={setMarketSearchText}
         />
       );
     }
@@ -1294,9 +1380,6 @@ function App() {
       </div>
 
       {alertToastStack}
-      {showNotificationsPanel && (
-        <NotificationsPanel onClose={() => setShowNotificationsPanel(false)} />
-      )}
       <BottomNav activeTab={activeTab} onChangeTab={handleChangeTab} />
     </div>
   );

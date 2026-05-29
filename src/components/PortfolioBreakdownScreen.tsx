@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import type { PortfolioTransaction, Position, Stock } from "../App";
 import useIsCompactLayout from "../hooks/useIsCompactLayout";
 import { C } from "../theme/colors";
-import { fmt } from "../utils/format";
+import { fmt, formatCompactCurrency } from "../utils/format";
 import {
   getPortfolioSummary,
   resolvePortfolioSymbol,
@@ -313,17 +313,14 @@ function PortfolioBreakdownScreen({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: isCompactLayout
-          ? "1fr"
-          : "repeat(2, minmax(0, 1fr))",
-        gap: 10,
-        marginBottom: 24,
+        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+        gap: 12,
       }}
     >
       <MetricCard
         title="Cost Basis"
         value={`₵${fmt(summary.totalCost)}`}
-        secondary={`Avg cost/share ₵${fmt(portfolioAverageCost)}`}
+        secondary={`Avg cost ₵${fmt(portfolioAverageCost)}`}
       />
       <MetricCard
         title="Realized P/L"
@@ -444,351 +441,142 @@ function PortfolioBreakdownScreen({
             textAlign: "center",
           }}
         >
-          Total holdings value: ₵{fmt(summary.totalValue)}
+          Total holdings value: {formatCompactCurrency(summary.totalValue, "₵")}
         </div>
 
-        {showEmptyState ? (
-          <div style={{ color: C.sub }}>No holdings or transactions available.</div>
+        {holdings.length === 0 ? (
+          <div style={{ color: C.sub, textAlign: "center", padding: "40px 0" }}>No active assets to display breakdown.</div>
         ) : (
           <>
-            {holdings.length > 0 ? (
-              <>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isCompactLayout ? "1fr" : "280px 1fr",
+                gap: isCompactLayout ? "24px" : "32px",
+                alignItems: "center",
+                marginBottom: 32,
+                background: C.card,
+                border: `1px solid ${C.border}`,
+                borderRadius: 16,
+                padding: isCompactLayout ? "20px 16px" : "28px",
+              }}
+            >
+              {/* Left Column: Donut & Interactive Legended Ring */}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
                 <div
                   style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    marginBottom: 24,
+                    width: isCompactLayout ? 160 : 180,
+                    height: isCompactLayout ? 160 : 180,
+                    borderRadius: "50%",
+                    background: donutGradient,
+                    border: `1px solid ${C.border}`,
+                    position: "relative",
+                    overflow: "hidden",
                   }}
                 >
                   <div
-                  style={{
-                      width: isCompactLayout ? 184 : 220,
-                      height: isCompactLayout ? 184 : 220,
+                    style={{
+                      position: "absolute",
+                      inset: isCompactLayout ? 26 : 30,
                       borderRadius: "50%",
-                      background: donutGradient,
+                      background: C.bg,
                       border: `1px solid ${C.border}`,
-                      position: "relative",
-                      overflow: "hidden",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      textAlign: "center",
+                      padding: "0 10px",
                     }}
                   >
                     <div
                       style={{
-                        position: "absolute",
-                        inset: isCompactLayout ? 32 : 38,
-                        borderRadius: "50%",
-                        background: C.bg,
-                        border: `1px solid ${C.border}`,
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        textAlign: "center",
-                        padding: "0 16px",
+                        color: C.sub,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        letterSpacing: "0.05em",
+                        textTransform: "uppercase",
                       }}
                     >
-                      <div
-                        style={{
-                          color: C.sub,
-                          fontSize: 12,
-                          fontWeight: 600,
-                          letterSpacing: "0.03em",
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        Total
-                      </div>
-                      <div
-                        style={{
-                          marginTop: 4,
-                          color: C.text,
-                          fontSize: isCompactLayout ? 20 : 24,
-                          fontWeight: 700,
-                          lineHeight: 1.1,
-                        }}
-                      >
-                        ₵{fmt(summary.totalValue)}
-                      </div>
+                      Total Value
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 2,
+                        color: C.text,
+                        fontSize: isCompactLayout ? 18 : 22,
+                        fontWeight: 700,
+                        lineHeight: 1.1,
+                      }}
+                    >
+                      {formatCompactCurrency(summary.totalValue, "₵")}
                     </div>
                   </div>
                 </div>
 
-                {metricsGrid}
-
-                {bestPerformer ? (
-                  <div style={{ marginBottom: 28 }}>
-                    <h2
-                      style={{
-                        margin: "0 0 14px",
-                        color: C.text,
-                        fontSize: 18,
-                        fontWeight: 700,
-                      }}
-                    >
-                      Best & Worst Performers
-                    </h2>
-
-                    <div
+                {/* Donut asset allocation weights */}
+                {allocationSegments.length > 0 && (
+                  <div
                     style={{
-                      display: "grid",
-                      gridTemplateColumns:
-                          worstPerformer && !isCompactLayout
-                            ? "repeat(2, minmax(0, 1fr))"
-                            : "1fr",
-                      gap: 10,
-                    }}
-                    >
-                      <PerformerCard 
-                        title="Best Performer" 
-                        holding={bestPerformer} 
-                        logoUrl={stocks.find(s => s.symbol === bestPerformer.symbol)?.logoUrl} 
-                      />
-                      {worstPerformer ? (
-                        <PerformerCard 
-                          title="Worst Performer" 
-                          holding={worstPerformer} 
-                          logoUrl={stocks.find(s => s.symbol === worstPerformer.symbol)?.logoUrl} 
-                        />
-                      ) : null}
-                    </div>
-                  </div>
-                ) : null}
-
-                {sectorAllocations.length > 0 ? (
-                  <div style={{ marginBottom: 28 }}>
-                    <h2
-                      style={{
-                        margin: "0 0 14px",
-                        color: C.text,
-                        fontSize: 18,
-                        fontWeight: 700,
-                      }}
-                    >
-                      Allocation by Sector
-                    </h2>
-
-                    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                      {sectorAllocations.map((sector, index) => (
-                        <div key={sector.sector}>
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              gap: 12,
-                              alignItems: "center",
-                              marginBottom: 8,
-                            }}
-                          >
-                            <div>
-                              <div
-                                style={{
-                                  color: C.text,
-                                  fontSize: 14,
-                                  fontWeight: 700,
-                                }}
-                              >
-                                {sector.sector}
-                              </div>
-                              <div
-                                style={{
-                                  color: C.sub,
-                                  fontSize: 12,
-                                  marginTop: 3,
-                                }}
-                              >
-                                {sector.holdingsCount} holding
-                                {sector.holdingsCount === 1 ? "" : "s"} •{" "}
-                                {formatSignedCurrency(sector.unrealizedPnl)}
-                              </div>
-                            </div>
-
-                            <div style={{ textAlign: "right" }}>
-                              <div style={{ color: C.text, fontWeight: 700 }}>
-                                ₵{fmt(sector.currentValue)}
-                              </div>
-                              <div style={{ color: C.sub, fontSize: 12, marginTop: 3 }}>
-                                {sector.weight.toFixed(1)}%
-                              </div>
-                            </div>
-                          </div>
-
-                          <div
-                            style={{
-                              width: "100%",
-                              height: 8,
-                              borderRadius: 999,
-                              background: C.border,
-                              overflow: "hidden",
-                            }}
-                          >
-                            <div
-                              style={{
-                                width: `${Math.min(100, Math.max(sector.weight, 4))}%`,
-                                height: "100%",
-                                borderRadius: 999,
-                                background: BREAKDOWN_COLORS[index % BREAKDOWN_COLORS.length],
-                              }}
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                <div style={{ marginBottom: 28 }}>
-                  <h2
-                    style={{
-                      margin: "0 0 14px",
-                      color: C.text,
-                      fontSize: 18,
-                      fontWeight: 700,
+                      display: "flex",
+                      flexWrap: "wrap",
+                      justifyContent: "center",
+                      gap: "6px",
+                      marginTop: "16px",
+                      maxWidth: "100%",
                     }}
                   >
-                    Gain/Loss by Holding
-                  </h2>
-
-                  <div style={{ display: "flex", flexDirection: "column" }}>
-                    {gainLossHoldings.map((holding, index) => {
-                      const segmentIndex = allocationSegments.findIndex(
-                        (segment) => segment.holding.symbol === holding.symbol
-                      );
-                      const color =
-                        BREAKDOWN_COLORS[
-                          segmentIndex >= 0 ? segmentIndex % BREAKDOWN_COLORS.length : 0
-                        ];
-                      const weight =
-                        summary.totalValue > 0
-                          ? (holding.currentValue / summary.totalValue) * 100
-                          : 0;
-
-                      return (
+                    {allocationSegments.map((segment) => (
                       <div
-                        key={holding.symbol}
+                        key={segment.holding.symbol}
                         style={{
-                          display: "grid",
-                          gridTemplateColumns: isCompactLayout ? "1fr" : "1fr auto",
-                          gap: 12,
+                          display: "flex",
                           alignItems: "center",
-                          padding: "12px 0",
-                          borderBottom:
-                            index < holdings.length - 1
-                              ? `1px solid ${C.border}`
-                              : "none",
+                          gap: "4px",
+                          fontSize: "11px",
+                          background: C.bg,
+                          border: `1px solid ${C.border}`,
+                          padding: "2px 8px",
+                          borderRadius: "99px",
+                          fontWeight: 600,
                         }}
                       >
-                        <div
+                        <span
                           style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 12,
-                            minWidth: 0,
+                            width: "6px",
+                            height: "6px",
+                            borderRadius: "50%",
+                            background: segment.color,
+                            display: "inline-block",
                           }}
-                        >
-                          <TickerLogo 
-                            symbol={holding.symbol} 
-                            size={36} 
-                            logoUrl={stocks.find(s => s.symbol === holding.symbol)?.logoUrl} 
-                          />
-
-                          <div style={{ minWidth: 0 }}>
-                            <div
-                              style={{
-                                color: C.text,
-                                fontWeight: 700,
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 8,
-                              }}
-                            >
-                              <span
-                                style={{
-                                  width: 10,
-                                  height: 10,
-                                  borderRadius: "50%",
-                                  background: color,
-                                  flexShrink: 0,
-                                }}
-                              />
-                              {holding.symbol}
-                            </div>
-                            <div
-                              style={{
-                                color: C.sub,
-                                fontSize: 13,
-                                lineHeight: 1.3,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {holding.name}
-                            </div>
-                            <div
-                              style={{
-                                color: C.sub,
-                                fontSize: 12,
-                                marginTop: 5,
-                                lineHeight: 1.35,
-                              }}
-                            >
-                              {holding.sector} • Avg cost ₵{fmt(holding.averageCost)}
-                            </div>
-                            <div
-                              style={{
-                                color: C.sub,
-                                fontSize: 12,
-                                marginTop: 3,
-                                lineHeight: 1.35,
-                              }}
-                            >
-                              P/L{" "}
-                              <span
-                                style={{
-                                  color: getToneColor(holding.unrealizedPnl),
-                                  fontWeight: 700,
-                                }}
-                              >
-                                {formatSignedCurrency(holding.unrealizedPnl)}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div style={{ textAlign: isCompactLayout ? "left" : "right" }}>
-                          <div style={{ color: C.text, fontWeight: 700 }}>
-                            ₵{fmt(holding.currentValue)}
-                          </div>
-                          <div
-                            style={{
-                              color: getToneColor(holding.unrealizedPnl),
-                              fontSize: 13,
-                              fontWeight: 700,
-                            }}
-                          >
-                            {formatSignedPercent(holding.unrealizedPnlPercent)}
-                          </div>
-                          <div
-                            style={{
-                              color: C.sub,
-                              fontSize: 12,
-                              marginTop: 4,
-                            }}
-                          >
-                            {weight.toFixed(1)}% of portfolio
-                          </div>
-                        </div>
+                        />
+                        <span style={{ color: C.text }}>{segment.holding.symbol}</span>
+                        <span style={{ color: C.sub, fontWeight: 500 }}>
+                          {segment.weight.toFixed(1)}%
+                        </span>
                       </div>
-                    );
-                    })}
+                    ))}
                   </div>
-                </div>
-              </>
-            ) : (
-              metricsGrid
-            )}
+                )}
+              </div>
 
-            {sortedTransactions.length > 0 ? (
+              {/* Right Column: 2x2 Clean Performance Metrics Grid */}
               <div>
+                {metricsGrid}
+              </div>
+            </div>
+
+
+
+            {sectorAllocations.length > 0 ? (
+              <div style={{ marginBottom: 28 }}>
                 <h2
                   style={{
                     margin: "0 0 14px",
@@ -797,122 +585,74 @@ function PortfolioBreakdownScreen({
                     fontWeight: 700,
                   }}
                 >
-                  Transactions
+                  Allocation by Sector
                 </h2>
 
-                <div style={{ display: "flex", flexDirection: "column" }}>
-                  {sortedTransactions.map((transaction, index) => {
-                    const symbol = String(transaction.symbol || "")
-                      .toUpperCase()
-                      .trim();
-                    const stock = stocks.find(
-                      (item) => resolvePortfolioSymbol(item) === symbol
-                    );
-                    const realizedPnl = toNumber(transaction.realizedPnl);
-                    const typeLabel = transaction.type === "buy" ? "Buy" : "Sell";
-                    const typeColor =
-                      transaction.type === "buy" ? C.green : C.red;
-
-                    return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  {sectorAllocations.map((sector, index) => (
+                    <div key={sector.sector}>
                       <div
-                        key={transaction.id}
                         style={{
-                          display: "grid",
-                          gridTemplateColumns: isCompactLayout ? "1fr" : "1fr auto",
+                          display: "flex",
+                          justifyContent: "space-between",
                           gap: 12,
                           alignItems: "center",
-                          padding: "14px 0",
-                          borderBottom:
-                            index < sortedTransactions.length - 1
-                              ? `1px solid ${C.border}`
-                              : "none",
+                          marginBottom: 8,
+                        }}
+                      >
+                        <div>
+                          <div
+                            style={{
+                              color: C.text,
+                              fontSize: 14,
+                              fontWeight: 700,
+                            }}
+                          >
+                            {sector.sector}
+                          </div>
+                          <div
+                            style={{
+                              color: C.sub,
+                              fontSize: 12,
+                              marginTop: 3,
+                            }}
+                          >
+                            {sector.holdingsCount} holding
+                            {sector.holdingsCount === 1 ? "" : "s"} •{" "}
+                            {formatSignedCurrency(sector.unrealizedPnl)}
+                          </div>
+                        </div>
+
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ color: C.text, fontWeight: 700 }}>
+                            ₵{fmt(sector.currentValue)}
+                          </div>
+                          <div style={{ color: C.sub, fontSize: 12, marginTop: 3 }}>
+                            {sector.weight.toFixed(1)}%
+                          </div>
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          width: "100%",
+                          height: 8,
+                          borderRadius: 999,
+                          background: C.border,
+                          overflow: "hidden",
                         }}
                       >
                         <div
                           style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 12,
-                            minWidth: 0,
+                            width: `${Math.min(100, Math.max(sector.weight, 4))}%`,
+                            height: "100%",
+                            borderRadius: 999,
+                            background: BREAKDOWN_COLORS[index % BREAKDOWN_COLORS.length],
                           }}
-                        >
-                          <TickerLogo 
-                            symbol={symbol} 
-                            size={34} 
-                            logoUrl={stock?.logoUrl} 
-                          />
-
-                          <div style={{ minWidth: 0 }}>
-                            <div
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 10,
-                                flexWrap: "wrap",
-                              }}
-                            >
-                              <span
-                                style={{
-                                  color: typeColor,
-                                  fontWeight: 700,
-                                  fontSize: 13,
-                                }}
-                              >
-                                {typeLabel}
-                              </span>
-                              <span style={{ color: C.text, fontWeight: 700 }}>
-                                {symbol}
-                              </span>
-                            </div>
-                            <div
-                              style={{
-                                color: C.sub,
-                                fontSize: 13,
-                                marginTop: 4,
-                                lineHeight: 1.35,
-                              }}
-                            >
-                              {transaction.shares} share
-                              {transaction.shares === 1 ? "" : "s"} at ₵
-                              {fmt(transaction.price)}
-                              {stock?.name ? ` • ${stock.name}` : ""}
-                            </div>
-                            <div
-                              style={{
-                                color: C.sub,
-                                fontSize: 12,
-                                marginTop: 5,
-                                lineHeight: 1.35,
-                              }}
-                            >
-                              {transactionDateFormatter.format(
-                                new Date(toNumber(transaction.timestamp))
-                              )}
-                              {transaction.type === "sell" ? (
-                                <>
-                                  {" • Realized "}
-                                  <span
-                                    style={{
-                                      color: getToneColor(realizedPnl),
-                                      fontWeight: 700,
-                                    }}
-                                  >
-                                    {formatSignedCurrency(realizedPnl)}
-                                  </span>
-                                </>
-                              ) : null}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div style={{ textAlign: isCompactLayout ? "left" : "right" }}>
-                          <div style={{ color: C.text, fontWeight: 700 }}>
-                            ₵{fmt(transaction.total)}
-                          </div>
-                        </div>
+                        />
                       </div>
-                    );
-                  })}
+                    </div>
+                  ))}
                 </div>
               </div>
             ) : null}

@@ -2,5 +2,7 @@
   "name": "Wallflake Market Explorer",
   "description": "An application to explore data from the Wallflake API.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

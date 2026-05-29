@@ -2,52 +2,15 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // 1. Global Safety Net (Catch-all deny)
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Common Helpers
-    function isValidId(id) {
-      return id != null && id.size() > 0 && id.size() <= 128;
-    }
-
-    // Helper to validate a Portfolio document if present on write
-    function isValidPortfolio(data) {
-      return data.cash is number 
-        && data.cash >= 0 
-        && data.watchlist is list;
-    }
-
-    // Helper to validate a Transaction document if present on write
-    function isValidTransaction(data) {
-      return data.symbol is string 
-        && data.type is string 
-        && (data.type == "buy" || data.type == "sell")
-        && data.shares is number 
-        && data.shares > 0
-        && data.price is number 
-        && data.price >= 0;
-    }
-
-    // Portfolios collection:
-    // Can be indexed by client UUID or request.auth.uid
     match /portfolios/{portfolioId} {
-      allow read: if isValidId(portfolioId);
-      
-      allow create, update: if isValidId(portfolioId) 
-        && isValidPortfolio(request.resource.data);
+      allow read, write: if portfolioId.matches('^client_.*') || (request.auth != null && request.auth.uid == portfolioId);
 
-      allow delete: if false;
-
-      // Subcollection for portfolio transactions
       match /transactions/{transactionId} {
-        allow read: if isValidId(portfolioId) && isValidId(transactionId);
-        
-        allow create, update: if isValidId(portfolioId) && isValidId(transactionId)
-          && isValidTransaction(request.resource.data);
-          
-        allow delete: if false;
+        allow read, write: if portfolioId.matches('^client_.*') || (request.auth != null && request.auth.uid == portfolioId);
       }
     }
   }

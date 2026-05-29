@@ -28,13 +28,13 @@ export function setupScheduler() {
     console.error("[Jobs] Initial business news pre-fetch failed:", msg);
   });
 
-  // Run the scraper every 10 seconds to get the very latest market prices
+  // Run the scraper every 3 minutes to get the very latest market prices safely and prevent rate-limiting (429)
   setInterval(() => {
     runScraper();
-  }, 10000);
+  }, 180000);
   
-  // Run fundamentals scraper every 15 minutes to be more up to date
-  cron.schedule("*/15 * * * *", () => {
+  // Run fundamentals scraper once every 4 hours to keep company details fresh (fundamentals change quarterly)
+  cron.schedule("0 */4 * * *", () => {
     runFundamentalsScraper();
   });
 

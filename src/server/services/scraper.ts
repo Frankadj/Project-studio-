@@ -1,6 +1,41 @@
 import { db } from "../database";
 import { STOCK_DISPLAY_NAME_MAP } from "../../lib/stockMetadata";
 
+export async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries = 3): Promise<Response> {
+  let attempt = 0;
+  let delay = 1000;
+  while (attempt < maxRetries) {
+    try {
+      const res = await fetch(url, options);
+      if (res.status === 429) {
+        attempt++;
+        const retryAfterHeader = res.headers.get("retry-after");
+        let waitMs = delay;
+        if (retryAfterHeader) {
+          const parsedSec = parseInt(retryAfterHeader, 10);
+          if (!isNaN(parsedSec)) {
+            waitMs = parsedSec * 1000;
+          }
+        }
+        console.warn(`[Fetcher] Rate limited (429) at ${url}. Retrying attempt ${attempt}/${maxRetries} after ${waitMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, waitMs));
+        delay *= 2.5; 
+        continue;
+      }
+      return res;
+    } catch (err: unknown) {
+      attempt++;
+      if (attempt >= maxRetries) {
+        throw err;
+      }
+      console.warn(`[Fetcher] Network error at ${url}. Retrying attempt ${attempt}/${maxRetries} in ${delay}ms...`, err);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      delay *= 2.5;
+    }
+  }
+  throw new Error(`Failed to fetch from ${url} after ${maxRetries} attempts.`);
+}
+
 // Custom registry mapping for Ghana Stock Exchange listed companies to ensure 100% accurate data, sectors, and logo URLs
 const WALLFLAKE_REGISTRY: Record<string, { name: string; sector: string; logoUrl: string }> = {
   "AADS": {
@@ -217,6 +252,11 @@ interface WallflakeQuote {
   low52w?: number | null;
   as_of: string;
   logoUrl?: string;
+  eps?: number | null;
+  pe?: number | null;
+  dividendYield?: number | null;
+  dividendPerShare?: number | null;
+  [key: string]: unknown;
 }
 
 export async function runScraper() {
@@ -238,7 +278,7 @@ export async function runScraper() {
   }
 
   try {
-    const summaryRes = await fetch("https://wallflake.com/api/market/summary", {
+    const summaryRes = await fetchWithRetry("https://wallflake.com/api/market/summary", {
       headers: { "User-Agent": "Mozilla/5.0" }
     });
     if (summaryRes.ok) {
@@ -259,24 +299,54 @@ export async function runScraper() {
     console.error("[Scraper] Failed to fetch market/summary to validate gainers/losers:", e);
   }
 
+  let quotes: WallflakeQuote[] = [];
   try {
-    const res = await fetch("https://wallflake.com/api/quotes", {
+    const res = await fetchWithRetry("https://wallflake.com/api/quotes", {
       headers: { "User-Agent": "Mozilla/5.0" }
     });
     if (!res.ok) {
       throw new Error(`Failed to fetch from Wallflake. Status: ${res.status}`);
     }
+    quotes = await res.json() as WallflakeQuote[];
+  } catch (fetchErr: unknown) {
+    const errorMessage = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+    console.error(`[Scraper] live quotes fetch failed: ${errorMessage}`);
+    try {
+      const insertLog = db.prepare(`
+        INSERT INTO audit_logs (runAt, scrapedRows, rejectedRows, missingFieldsCount, computedFieldsCount, nullFieldsCount, schemaError, status, message)
+        VALUES (@runAt, @scrapedRows, @rejectedRows, @missingFieldsCount, @computedFieldsCount, @nullFieldsCount, @schemaError, @status, @message)
+      `);
+      insertLog.run({
+        runAt: nowIso,
+        scrapedRows: 0,
+        rejectedRows: 0,
+        missingFieldsCount: 0,
+        computedFieldsCount: 0,
+        nullFieldsCount: 0,
+        schemaError: errorMessage,
+        status: 'FAILED',
+        message: `Failed to fetch from Wallflake: ${errorMessage}`
+      });
+    } catch {
+      // Ignore
+    }
+    throw fetchErr;
+  }
 
-    const quotes = await res.json() as WallflakeQuote[];
+  try {
     let scrapedRows = 0;
 
     const upsertCompany = db.prepare(`
-      INSERT INTO companies (symbol, name, sector, logoUrl, updatedAt)
-      VALUES (@symbol, @name, @sector, @logoUrl, @updatedAt)
+      INSERT INTO companies (symbol, name, sector, logoUrl, eps, pe, dividendYield, dividendPerShare, updatedAt)
+      VALUES (@symbol, @name, @sector, @logoUrl, @eps, @pe, @dividendYield, @dividendPerShare, @updatedAt)
       ON CONFLICT(symbol) DO UPDATE SET
         name = IFNULL(excluded.name, name),
         sector = IFNULL(excluded.sector, sector),
         logoUrl = IFNULL(excluded.logoUrl, logoUrl),
+        eps = IFNULL(excluded.eps, eps),
+        pe = IFNULL(excluded.pe, pe),
+        dividendYield = IFNULL(excluded.dividendYield, dividendYield),
+        dividendPerShare = IFNULL(excluded.dividendPerShare, dividendPerShare),
         updatedAt = excluded.updatedAt
     `);
 
@@ -397,12 +467,22 @@ export async function runScraper() {
           }
         }
 
+        // Extract optional eps and dividend yields from quote API response if available
+        const qEps = typeof q.eps === "number" ? q.eps : (typeof q["earningsPerShare"] === "number" ? q["earningsPerShare"] as number : null);
+        const qPe = typeof q.pe === "number" ? q.pe : (typeof q["peRatio"] === "number" ? q["peRatio"] as number : null);
+        const qDivYield = typeof q.dividendYield === "number" ? q.dividendYield : (typeof q["dividend_yield"] === "number" ? q["dividend_yield"] as number : (typeof q["divYield"] === "number" ? q["divYield"] as number : null));
+        const qDivPerShare = typeof q.dividendPerShare === "number" ? q.dividendPerShare : (typeof q["dividend_per_share"] === "number" ? q["dividend_per_share"] as number : (typeof q["dividend"] === "number" ? q["dividend"] as number : null));
+
         // Upsert company
         upsertCompany.run({
           symbol,
           name: finalName,
           sector: finalSector,
           logoUrl: finalLogoUrl,
+          eps: qEps,
+          pe: qPe,
+          dividendYield: qDivYield,
+          dividendPerShare: qDivPerShare,
           updatedAt: nowIso
         });
 
@@ -477,7 +557,9 @@ export async function runFundamentalsScraper() {
     let updated = 0;
     for (const c of companies) {
       try {
-        const res = await fetch(`https://wallflake.com/api/companies/${c.symbol}`);
+        const res = await fetchWithRetry(`https://wallflake.com/api/companies/${c.symbol}`, {
+          headers: { "User-Agent": "Mozilla/5.0" }
+        });
         if (!res.ok) continue;
         const data = await res.json();
         if (data && data.fundamentals) {
@@ -489,7 +571,7 @@ export async function runFundamentalsScraper() {
           `).run(f.eps, f.pe, f.dividendYield, f.dividendPerShare, nowIso, c.symbol);
           updated++;
         }
-        await new Promise(r => setTimeout(r, 400));
+        await new Promise(r => setTimeout(r, 1200));
       } catch (err: unknown) {
         const errMsg = err instanceof Error ? err.message : String(err);
         console.error(`Error updating supplementary fundamentals for ${c.symbol}: ${errMsg}`);
@@ -520,7 +602,7 @@ export async function seedHistoricalQuotes(symbols: string[]) {
     for (const symbol of needFetch) {
       try {
         const url = `https://wallflake.com/api/eod/${encodeURIComponent(symbol)}`;
-        const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+        const res = await fetchWithRetry(url, { headers: { "User-Agent": "Mozilla/5.0" } });
         if (!res.ok) {
           console.warn(`[Historical Seeder] Failed to fetch historical data for ${symbol}: Status ${res.status}`);
           continue;
@@ -553,11 +635,11 @@ export async function seedHistoricalQuotes(symbols: string[]) {
           })();
           console.log(`[Historical Seeder] Saved ${data.length} historical days for ${symbol}`);
         }
-        await new Promise(r => setTimeout(r, 100));
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[Historical Seeder] Historic loader failure:`, msg);
+        console.error(`[Historical Seeder] Historic loader failure for ${symbol}:`, msg);
       }
+      await new Promise(r => setTimeout(r, 1500)); // Stagger delay to protect Wallflake rate limits
     }
   }
 }

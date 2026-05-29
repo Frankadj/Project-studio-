@@ -114,20 +114,19 @@ export function buildPortfolio(accountId: number = 1): FullPortfolio {
   };
 }
 
-export function generatePortfolioSnapshot(accountId: number = 1) {
-  const p = buildPortfolio(accountId);
+export function generatePortfolioSnapshot(userId: number = 1) {
+  const p = buildPortfolio(userId);
   db.prepare(`
     INSERT INTO portfolio_snapshots (
-      account_id, timestamp, total_portfolio_value, cash_balance, 
-      invested_value, total_return, daily_return
+      user_id, timestamp, portfolio_value, cash_balance, 
+      invested_value, total_return
     )
-    VALUES (?, datetime('now'), ?, ?, ?, ?, ?)
+    VALUES (?, datetime('now'), ?, ?, ?, ?)
   `).run(
-    accountId,
+    userId,
     p.summary.totalPortfolioValue,
     p.summary.cashBalance,
     p.summary.investedValue,
-    p.summary.totalReturn,
-    p.summary.todayReturn
+    p.summary.totalReturn
   );
 }

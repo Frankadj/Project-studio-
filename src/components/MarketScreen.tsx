@@ -22,14 +22,23 @@ type Props = {
   apiBase: string;
   onOpenHeatmap: () => void;
   onSelect: (stock: Stock) => void;
+  activeCategory: MarketCategoryKey;
+  setActiveCategory: (key: MarketCategoryKey) => void;
+  search: string;
+  setSearch: (val: string) => void;
 };
 
-function MarketScreen({ stocks, apiBase, onOpenHeatmap, onSelect }: Props) {
+function MarketScreen({
+  stocks,
+  apiBase,
+  onOpenHeatmap,
+  onSelect,
+  activeCategory,
+  setActiveCategory,
+  search,
+  setSearch,
+}: Props) {
   const isCompactLayout = useIsCompactLayout();
-  const [search, setSearch] = useState("");
-  const [activeCategory, setActiveCategory] = useState<MarketCategoryKey>(
-    DEFAULT_MARKET_CATEGORY
-  );
 
   const popularLists = useMemo(() => getPopularMarketLists(stocks), [stocks]);
 
@@ -42,9 +51,7 @@ function MarketScreen({ stocks, apiBase, onOpenHeatmap, onSelect }: Props) {
     (item) => item.key === activeCategory && item.key !== "heatmap"
   );
 
-  if (!hasActiveCategory) {
-    setActiveCategory(DEFAULT_MARKET_CATEGORY);
-  }
+  const resolvedCategory = hasActiveCategory ? activeCategory : DEFAULT_MARKET_CATEGORY;
 
   const handleSelectPopularList = (key: MarketCategoryKey) => {
     if (key === "heatmap") {
@@ -69,22 +76,22 @@ function MarketScreen({ stocks, apiBase, onOpenHeatmap, onSelect }: Props) {
         return false;
       }
 
-      return matchesMarketCategory(stock, activeCategory);
+      return matchesMarketCategory(stock, resolvedCategory);
     });
 
-    if (activeCategory === "gainers") {
+    if (resolvedCategory === "gainers") {
       return [...base].sort(
         (a, b) => Number(b.changePercent) - Number(a.changePercent)
       );
     }
 
-    if (activeCategory === "losers") {
+    if (resolvedCategory === "losers") {
       return [...base].sort(
         (a, b) => Number(a.changePercent) - Number(b.changePercent)
       );
     }
 
-    if (activeCategory === "most_active") {
+    if (resolvedCategory === "most_active") {
       return [...base].sort(
         (a, b) => Number(b.volume) - Number(a.volume)
       ).slice(0, 10);
@@ -96,7 +103,7 @@ function MarketScreen({ stocks, apiBase, onOpenHeatmap, onSelect }: Props) {
 
       return aSymbol.localeCompare(bSymbol);
     });
-  }, [stocks, search, activeCategory]);
+  }, [stocks, search, resolvedCategory]);
 
   const weeklyMiniCharts = useMiniHistoryMap({
     apiBase,
@@ -139,7 +146,7 @@ function MarketScreen({ stocks, apiBase, onOpenHeatmap, onSelect }: Props) {
 
       <PopularListsSection
         items={popularLists}
-        selectedKey={activeCategory}
+        selectedKey={resolvedCategory}
         onSelect={handleSelectPopularList}
       />
 

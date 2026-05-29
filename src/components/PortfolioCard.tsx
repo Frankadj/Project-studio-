@@ -3,7 +3,7 @@ import { MoreHorizontal } from "lucide-react";
 import type { PortfolioTransaction, Position, Stock } from "../App";
 import { C } from "../theme/colors";
 import useIsCompactLayout from "../hooks/useIsCompactLayout";
-import { fmt } from "../utils/format";
+import { fmt, formatCompactCurrency } from "../utils/format";
 import { type ChartPeriod } from "../utils/chartPeriods";
 import {
   getPortfolioHistorySymbols,
@@ -26,7 +26,6 @@ type PortfolioCardProps = {
   stocks: Stock[];
   positions: Record<string, Position>;
   transactions: PortfolioTransaction[];
-  cash: number;
   apiBase: string;
   onOpenBreakdown: () => void;
 };
@@ -59,9 +58,11 @@ function useAnimatedNumber(target: number, duration = 120) {
     const delta = target - startValue;
 
     if (Math.abs(delta) < 0.0001) {
-      setDisplayValue(target);
-      currentValueRef.current = target;
-      return;
+      const handle = requestAnimationFrame(() => {
+        setDisplayValue(target);
+        currentValueRef.current = target;
+      });
+      return () => cancelAnimationFrame(handle);
     }
 
     let frameId = 0;
@@ -150,10 +151,8 @@ function PortfolioCard({
   );
   const historySymbolsKey = historySymbols.join(",");
   const hasRecordedTrades = transactions.length > 0;
-  const hasCompleteHistory = useMemo(
-    () => hasCompletePortfolioHistory(positions, transactions),
-    [positions, transactions]
-  );
+  // Always true for history backend tracking engine now
+  const hasCompleteHistory = true;
 
   const resetPortfolioChartState = (keepLoading = true) => {
     historyRequestIdRef.current += 1;
@@ -202,13 +201,22 @@ function PortfolioCard({
         if (!res.ok) throw new Error();
         
         const data = await res.json();
-        const mapped = data.map((d: any) => ({
-          date: d.timestamp,
-          value: d.totalPortfolioValue || 0,
-          holdingsValue: d.holdingsValue || 0,
-          holdingsReturn: d.holdingsReturn || 0,
-          holdingsReturnPercent: d.holdingsReturnPercent || 0,
-        }));
+        const mapped = data.map((d: any) => {
+          const cashBalance = d.cashBalance || 0;
+          const portfolioValue = d.portfolioValue || 0;
+          const investedValue = d.investedValue || 0;
+          const holdingsValue = Math.max(0, portfolioValue - cashBalance);
+          const holdingsReturn = holdingsValue - investedValue;
+          const holdingsReturnPercent = investedValue > 0 ? (holdingsReturn / investedValue) * 100 : 0;
+          
+          return {
+            date: d.timestamp,
+            value: portfolioValue,
+            holdingsValue,
+            holdingsReturn,
+            holdingsReturnPercent,
+          };
+        });
 
         setPortfolioHistory(mapped);
         if (mapped.length < 2) {
@@ -235,13 +243,24 @@ function PortfolioCard({
   }, [period]);
 
   const chartPoints = useMemo(() => {
-    return portfolioHistory.map((point) => ({
+    const pts = portfolioHistory.map((point) => ({
       date: point.date,
       value: viewMode === "returns" ? point.holdingsReturnPercent : point.holdingsValue,
       holdingsValue: point.holdingsValue,
       holdingsReturn: point.holdingsReturn,
       holdingsReturnPercent: point.holdingsReturnPercent,
     }));
+
+    const firstRealIndex = pts.findIndex((point) => point.holdingsValue > 0);
+    
+    if (firstRealIndex > 0) {
+      return pts.slice(firstRealIndex);
+    } else if (firstRealIndex === -1 && pts.length > 0) {
+      // Never had any holdings
+      return [pts[pts.length - 1]];
+    }
+
+    return pts;
   }, [portfolioHistory, viewMode]);
 
   const firstRealPoint =
@@ -264,11 +283,37 @@ function PortfolioCard({
 
   // Set target values for display and animations
   const currentHoldingsValue = previewPoint ? previewPoint.holdingsValue : totalHoldingsValue;
-  const rangeStartValue = rangeStartPoint ? rangeStartPoint.holdingsValue : currentHoldingsValue;
   
+  // Note: firstRealPoint is the first day they owned a stock. If they hover BEFORE they owned a stock, the date is earlier.
+  const isHoveringBeforeFirstInvestment = rangeStartPoint && previewPoint && previewPoint.date < rangeStartPoint.date;
+
   const displayValueTarget = currentHoldingsValue;
-  const displayPeriodReturnAmountTarget = currentHoldingsValue - rangeStartValue;
-  const displayPeriodReturnPercentTarget = rangeStartValue > 0 ? (displayPeriodReturnAmountTarget / rangeStartValue) * 100 : 0;
+  
+  let displayPeriodReturnAmountTarget = 0;
+  let displayPeriodReturnPercentTarget = 0;
+
+  // Use the actual tracked return from the backend (total return up to that point)
+  // To get the return for the period, subtract the start-of-period return.
+  if (previewPoint) {
+    if (currentHoldingsValue === 0) {
+      displayPeriodReturnAmountTarget = 0;
+      displayPeriodReturnPercentTarget = 0;
+    } else {
+      const currentReturn = previewPoint.holdingsReturn;
+      const startReturn = (rangeStartPoint && !isHoveringBeforeFirstInvestment) ? rangeStartPoint.holdingsReturn : 0;
+      
+      displayPeriodReturnAmountTarget = currentReturn - startReturn;
+      
+      // For percent, find what the baseline starting portfolio value was for this return
+      // We can approximate the invested capital for this period
+      const currentInvested = currentHoldingsValue - currentReturn;
+      if (currentInvested > 0) {
+        displayPeriodReturnPercentTarget = (displayPeriodReturnAmountTarget / currentInvested) * 100;
+      } else {
+        displayPeriodReturnPercentTarget = previewPoint.holdingsReturnPercent;
+      }
+    }
+  }
   
   const displayValue = useAnimatedNumber(displayValueTarget);
   const displayPeriodReturnAmount = useAnimatedNumber(displayPeriodReturnAmountTarget);
@@ -475,7 +520,7 @@ function PortfolioCard({
               textAlign: "left",
             }}
           >
-            ₵{fmt(displayValue)}
+            ₵{displayValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
 
           <button

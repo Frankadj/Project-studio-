@@ -3,15 +3,16 @@ import { C } from "../theme/colors";
 import StockChart from "./StockChart";
 import ChartLoadingSkeleton from "./ChartLoadingSkeleton";
 import ChartRefreshOverlay from "./ChartRefreshOverlay";
-import BuyModal from "./BuyModal";
 import PriceAlertModal from "./PriceAlertModal";
-import SellModal from "./SellModal";
 import TickerLogo from "./TickerLogo";
 import ChartPeriodTabs from "./ChartPeriodTabs";
 import CorporateActionsSkeleton from "./CorporateActionsSkeleton";
 import type { PortfolioTransaction, Position } from "../App";
 import useIsCompactLayout from "../hooks/useIsCompactLayout";
 import { getApiBase } from "../lib/api";
+import { useMiniHistoryMap } from "../hooks/useMiniHistoryMap";
+import MiniSparkline from "./MiniSparkline";
+import { getStockMovementTone, formatStockChangePercent } from "../utils/stockMovement";
 import {
   readPriceAlert,
   removePriceAlert,
@@ -123,15 +124,14 @@ type StockCorporateActionsResponse = {
 
 type StockDetailProps = {
   stock: Stock;
+  stocks?: Stock[];
+  onSelect?: (stock: Stock) => void;
   onBack: () => void;
-  cash: number;
-  setCash: (val: number) => void;
   positions: Record<string, Position>;
-  setPositions: (val: Record<string, Position>) => void;
-  transactions: PortfolioTransaction[];
-  setTransactions: (val: PortfolioTransaction[]) => void;
+  hasTransactions: boolean;
   isInWatchlist: boolean;
   onToggleWatchlist: (symbol: string) => void;
+  onNavigateToTransaction: (symbol: string) => void;
 };
 
 type StockPeriod = ChartPeriod;
@@ -173,9 +173,11 @@ function useAnimatedNumber(target: number, duration = 120) {
     const delta = target - startValue;
 
     if (Math.abs(delta) < 0.0001) {
-      setDisplayValue(target);
-      currentValueRef.current = target;
-      return;
+      const handle = requestAnimationFrame(() => {
+        setDisplayValue(target);
+        currentValueRef.current = target;
+      });
+      return () => cancelAnimationFrame(handle);
     }
 
     let frameId = 0;
@@ -310,21 +312,13 @@ function formatPercent(value: number | null | undefined) {
   return Number.isFinite(safeValue) ? `${safeValue.toFixed(2)}%` : "-";
 }
 
+import { formatFinancialValue, formatCompactCurrency } from "../utils/format";
+
 function formatCompactMoney(value: number | null | undefined) {
-  if (value === null || value === undefined) {
-    return "-";
-  }
+  if (value === null || value === undefined) return "-";
   const safeValue = Number(value);
-  if (!Number.isFinite(safeValue)) {
-    return "-";
-  }
-
-  const compact = new Intl.NumberFormat("en-US", {
-    notation: "compact",
-    maximumFractionDigits: 2,
-  }).format(safeValue);
-
-  return `₵${compact}`;
+  if (!Number.isFinite(safeValue)) return "-";
+  return formatCompactCurrency(safeValue, "₵");
 }
 
 function StatCell({
@@ -362,15 +356,14 @@ function StatCell({
 
 function StockDetail({
   stock,
+  stocks = [],
+  onSelect,
   onBack,
-  cash,
-  setCash,
   positions,
-  setPositions,
-  transactions,
-  setTransactions,
+  hasTransactions,
   isInWatchlist,
   onToggleWatchlist,
+  onNavigateToTransaction,
 }: StockDetailProps) {
   const apiBase = getApiBase();
   const isCompactLayout = useIsCompactLayout();
@@ -403,8 +396,7 @@ function StockDetail({
   );
 
   const [period, setPeriod] = useState<StockPeriod>("1W");
-  const [showBuy, setShowBuy] = useState(false);
-  const [showSell, setShowSell] = useState(false);
+  const [showActionMenu, setShowActionMenu] = useState(false);
   const [showPriceAlertModal, setShowPriceAlertModal] = useState(false);
   const [activePriceAlert, setActivePriceAlert] = useState<PriceAlert | null>(() =>
     readPriceAlert(symbol)
@@ -470,6 +462,102 @@ function StockDetail({
     !Array.isArray(cachedBootstrapCorporateActions?.items)
   );
   const [corporateActionsError, setCorporateActionsError] = useState("");
+
+  // RELATED STOCKS / RELATED ASSETS FEATURE
+  const isEtf = useMemo(() => {
+    const sym = symbol.toUpperCase();
+    return (
+      sym === "GLD" ||
+      stock.sector?.toLowerCase() === "etf" ||
+      stockProfile?.sector?.toLowerCase() === "etf" ||
+      stockProfile?.industry?.toLowerCase() === "etf" ||
+      stock.name?.toLowerCase().includes("etf")
+    );
+  }, [stock, stockProfile, symbol]);
+
+  const currentSector =
+    stockProfile?.company?.sector ||
+    stockProfile?.sector ||
+    companyInfo.sector ||
+    stock.sector ||
+    bootstrapCompanyInfo.sector;
+
+  const relatedStocks = useMemo(() => {
+    if (!stocks || stocks.length === 0) return [];
+    const currentSymbol = symbol.toUpperCase();
+    
+    // Filter out current stock
+    const otherStocks = stocks.filter(s => {
+      const sym = (s.symbol || s.ticker || s.code || "").toUpperCase();
+      return sym !== currentSymbol;
+    });
+
+    if (isEtf) {
+      // It's an ETF, find other ETFs/Assets
+      const etfs = otherStocks.filter(s => {
+        const sym = (s.symbol || s.ticker || s.code || "").toUpperCase();
+        return (
+          sym === "GLD" ||
+          s.sector?.toLowerCase() === "etf" ||
+          s.name?.toLowerCase().includes("etf")
+        );
+      });
+      
+      if (etfs.length > 0) {
+        return etfs.slice(0, 4);
+      }
+      
+      // Fallback: financial sector assets
+      const financials = otherStocks.filter(s => {
+        const cat = resolveMarketCategory({
+          symbol: s.symbol || s.ticker || s.code || "",
+          name: s.name,
+          sector: s.sector
+        });
+        return cat === "financials";
+      });
+      return financials.slice(0, 4);
+    } else {
+      // It's a regular stock, find stocks in the same sector/market category
+      const currentCat = resolveMarketCategory({
+        symbol: stock.symbol || stock.ticker || stock.code || "",
+        name: stock.name,
+        sector: currentSector
+      });
+      
+      const sameSector = otherStocks.filter(s => {
+        const cat = resolveMarketCategory({
+          symbol: s.symbol || s.ticker || s.code || "",
+          name: s.name,
+          sector: s.sector
+        });
+        return cat === currentCat;
+      });
+
+      // Sort by volume/activity
+      sameSector.sort((a, b) => (b.volume || 0) - (a.volume || 0));
+
+      if (sameSector.length >= 4) {
+        return sameSector.slice(0, 4);
+      }
+
+      // Fill remaining from top stocks in other categories
+      const sameSectorSymbols = new Set(sameSector.map(s => (s.symbol || s.ticker || s.code || "").toUpperCase()));
+      const remaining = otherStocks.filter(s => {
+        const sym = (s.symbol || s.ticker || s.code || "").toUpperCase();
+        return !sameSectorSymbols.has(sym);
+      });
+
+      remaining.sort((a, b) => (b.volume || 0) - (a.volume || 0));
+      return [...sameSector, ...remaining].slice(0, 4);
+    }
+  }, [stocks, stock, isEtf, currentSector, symbol]);
+
+  const relatedMiniCharts = useMiniHistoryMap({
+    apiBase,
+    stocks: relatedStocks,
+    range: "1W"
+  });
 
   const fetchContextKey = `${symbol}|${period}`;
   latestFetchContextRef.current = fetchContextKey;
@@ -1032,45 +1120,128 @@ function StockDetail({
             flexShrink: 0,
           }}
         >
-          <button
-            type="button"
-            onClick={() => onToggleWatchlist(symbol)}
-            aria-label={
-              isInWatchlist
-                ? `Remove ${symbol || displayCompanyName} from watchlist`
-                : `Add ${symbol || displayCompanyName} to watchlist`
-            }
-            style={{
-              background: "none",
-              border: "none",
-              color: isInWatchlist ? C.green : C.text,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 0,
-            }}
-          >
-            <svg
-              width="29"
-              height="29"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke={isInWatchlist ? C.green : C.text}
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+          <div style={{ position: "relative" }}>
+            <button
+              type="button"
+              onClick={() => setShowActionMenu(!showActionMenu)}
+              aria-label="Add action menu"
+              style={{
+                background: "none",
+                border: "none",
+                color: C.text,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 0,
+              }}
             >
-              {isInWatchlist ? (
-                <path d="M5 12.5 9.2 16.5 19 7.5" />
-              ) : (
-                <>
-                  <path d="M12 5v14" />
-                  <path d="M5 12h14" />
-                </>
-              )}
-            </svg>
-          </button>
+              <svg
+                width="29"
+                height="29"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke={C.text}
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 5v14" />
+                <path d="M5 12h14" />
+              </svg>
+            </button>
+
+            {showActionMenu && (
+              <>
+                <div
+                  style={{ position: "fixed", inset: 0, zIndex: 90 }}
+                  onClick={() => setShowActionMenu(false)}
+                />
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "100%",
+                    right: 0,
+                    marginTop: 8,
+                    background: C.card,
+                    border: `1px solid ${C.border}`,
+                    borderRadius: 16,
+                    padding: 8,
+                    minWidth: 200,
+                    zIndex: 100,
+                    boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.5)",
+                  }}
+                >
+                  <button
+                    onClick={() => {
+                      onToggleWatchlist(symbol);
+                      setShowActionMenu(false);
+                    }}
+                    style={{
+                      width: "100%",
+                      padding: "12px 16px",
+                      background: "transparent",
+                      border: "none",
+                      color: C.text,
+                      textAlign: "left",
+                      fontSize: 16,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      borderRadius: 10,
+                    }}
+                  >
+                    {isInWatchlist ? (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={C.red} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    ) : (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M5 12.5 9.2 16.5 19 7.5" />
+                      </svg>
+                    )}
+                    {isInWatchlist ? "Remove from Watchlist" : "Add to Watchlist"}
+                  </button>
+
+                  {!hasTransactions && ownedShares === 0 && (
+                    <>
+                      <div style={{ height: 1, background: C.border, margin: "4px 0" }} />
+                      <button
+                        onClick={() => {
+                          onNavigateToTransaction(symbol);
+                          setShowActionMenu(false);
+                        }}
+                        style={{
+                          width: "100%",
+                          padding: "12px 16px",
+                          background: "transparent",
+                          border: "none",
+                          color: C.text,
+                          textAlign: "left",
+                          fontSize: 16,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 12,
+                          borderRadius: 10,
+                        }}
+                      >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="2" y="4" width="20" height="16" rx="2" />
+                          <line x1="2" y1="10" x2="22" y2="10" />
+                        </svg>
+                        Add to Holdings
+                      </button>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
 
           <button
             type="button"
@@ -1239,20 +1410,42 @@ function StockDetail({
           />
         </div>
 
-        {ownedShares > 0 && (
+        {(ownedShares > 0 || hasTransactions) && (
           <>
-            <h3
-              style={{
-                margin: 0,
-                marginBottom: 16,
-                fontSize: 20,
-                fontWeight: 700,
-                color: C.text,
-                textAlign: "left",
-              }}
-            >
-              Ownership
-            </h3>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <h3
+                style={{
+                  margin: 0,
+                  fontSize: 20,
+                  fontWeight: 700,
+                  color: C.text,
+                  textAlign: "left",
+                }}
+              >
+                Ownership
+              </h3>
+              <button
+                onClick={() => onNavigateToTransaction(symbol)}
+                style={{
+                  background: C.card,
+                  border: `1px solid ${C.border}`,
+                  color: C.text,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: 8,
+                  borderRadius: "50%",
+                }}
+                aria-label="Add New Transaction"
+                title="Add New Transaction"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              </button>
+            </div>
 
             <div style={{ marginBottom: 56, textAlign: "left" }}>
               <div
@@ -1362,7 +1555,7 @@ function StockDetail({
           <StatCell label="Open" value={formatMoney(stats.open)} />
           <StatCell label="Previous Close" value={formatMoney(stats.previousClose)} />
           <StatCell label="High" value={formatMoney(stats.high)} />
-          <StatCell label="Volume" value={stats.volume.toLocaleString()} />
+          <StatCell label="Volume" value={formatFinancialValue(stats.volume)} />
           <StatCell label="Market Cap" value={formatCompactMoney(stats.marketCap)} />
           <StatCell label="P/E Ratio" value={stats.pe != null ? stats.pe.toFixed(2) : "-"} />
           <StatCell label="EPS" value={stats.eps != null ? stats.eps.toFixed(2) : "-"} />
@@ -1574,85 +1767,149 @@ function StockDetail({
           )}
         </div>
 
-      </div>
+        {/* RELATED STOCKS / ASSETS SECTION */}
+        {relatedStocks.length > 0 && (
+          <>
+            <h3
+              style={{
+                margin: 0,
+                marginTop: 40,
+                marginBottom: 16,
+                fontSize: 20,
+                fontWeight: 700,
+                color: C.text,
+                textAlign: "left",
+              }}
+            >
+              {isEtf ? "Related Assets" : "Related stocks"}
+            </h3>
 
-      <div
-        style={{
-          position: "fixed",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          background: C.bg,
-          padding: isCompactLayout
-            ? "12px 14px calc(12px + env(safe-area-inset-bottom, 0px))"
-            : "12px 16px",
-          borderTop: `1px solid ${C.border}`,
-          display: "grid",
-          gridTemplateColumns: ownedShares > 0 ? "1fr 1fr" : "1fr",
-          gap: 12,
-          zIndex: 1000,
-        }}
-      >
-        <button
-          onClick={() => setShowBuy(true)}
-          style={{
-            background: C.green,
-            color: "#000",
-            border: "none",
-            borderRadius: "16px",
-            padding: "16px",
-            fontSize: isCompactLayout ? "17px" : "18px",
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
-        >
-          Buy
-        </button>
+            <div
+              key={`related-${symbol}`}
+              className="no-scrollbar"
+              style={{
+                display: "flex",
+                gap: "14px",
+                overflowX: "auto",
+                overflowY: "hidden",
+                paddingBottom: "12px",
+                marginBottom: 56,
+                textAlign: "left",
+                scrollbarWidth: "none",
+                msOverflowStyle: "none",
+                WebkitOverflowScrolling: "touch",
+              }}
+            >
+              {relatedStocks.map((rs) => {
+                const rSymbol = String(rs.symbol || rs.ticker || rs.code || "").toUpperCase().trim();
+                const tone = getStockMovementTone(rs);
+                const isPositive = tone === "positive";
+                const isNegative = tone === "negative";
+                const textChangeColor = isPositive ? C.green : isNegative ? C.red : C.sub;
 
-        {ownedShares > 0 && (
-          <button
-            onClick={() => setShowSell(true)}
-            style={{
-              background: C.green,
-              color: "#000",
-              border: "none",
-              borderRadius: "16px",
-              padding: "16px",
-              fontSize: isCompactLayout ? "17px" : "18px",
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
-          >
-            Sell
-          </button>
+                const valuesForSparkline =
+                  tone !== "neutral" && Array.isArray(relatedMiniCharts[rSymbol]) && relatedMiniCharts[rSymbol].length >= 2
+                    ? relatedMiniCharts[rSymbol]
+                    : [Number(rs.price), Number(rs.price)];
+                const sparklineTone = tone;
+
+                return (
+                  <div
+                    key={rSymbol}
+                    onClick={() => onSelect && onSelect(rs)}
+                    style={{
+                      background: C.card,
+                      border: `1px solid ${C.border}`,
+                      borderRadius: "16px",
+                      padding: "16px",
+                      display: "flex",
+                      flexDirection: "column",
+                      cursor: "pointer",
+                      transition: "transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease",
+                      overflow: "hidden",
+                      flex: isCompactLayout ? "0 0 166px" : "0 0 216px",
+                    }}
+                    className="hover:scale-[1.01] hover:brightness-110"
+                  >
+                    {/* Symbol */}
+                    <div style={{ fontSize: 11, fontWeight: 600, color: C.sub, textTransform: "uppercase" }}>
+                      {rSymbol}
+                    </div>
+                    {/* Name */}
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 700,
+                        color: C.text,
+                        marginTop: 2,
+                        textOverflow: "ellipsis",
+                        overflow: "hidden",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {rs.name}
+                    </div>
+
+                    {/* Price & Change inline beside price */}
+                    <div style={{ marginTop: 10, display: "flex", alignItems: "baseline", gap: "8px", flexWrap: "wrap" }}>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>
+                        ₵{Number(rs.price).toFixed(2)}
+                      </div>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 3, color: textChangeColor, fontSize: 13, fontWeight: 700 }}>
+                        <span>{formatStockChangePercent(rs)}</span>
+                        {isPositive && (
+                          <span style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            borderRadius: "999px",
+                            background: "rgba(52, 211, 153, 0.12)",
+                            width: "16px",
+                            height: "16px",
+                          }}>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                              <line x1="12" y1="19" x2="12" y2="5"></line>
+                              <polyline points="5 12 12 5 19 12"></polyline>
+                            </svg>
+                          </span>
+                        )}
+                        {isNegative && (
+                          <span style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            borderRadius: "999px",
+                            background: "rgba(239, 68, 68, 0.12)",
+                            width: "16px",
+                            height: "16px",
+                          }}>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={C.red} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                              <line x1="12" y1="5" x2="12" y2="19"></line>
+                              <polyline points="19 12 12 19 5 12"></polyline>
+                            </svg>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Sparkline chart */}
+                    <div style={{ marginTop: 14, display: "flex", justifyContent: "center", width: "100%" }}>
+                      <MiniSparkline
+                        values={valuesForSparkline}
+                        tone={sparklineTone}
+                        width={isCompactLayout ? 134 : 184}
+                        height={32}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
+
+        {/* The rest of the content up to the fixed bottom bar */}
       </div>
-
-      {showBuy && (
-        <BuyModal
-          stock={{ ...stock, symbol }}
-          cash={cash}
-          setCash={setCash}
-          positions={positions}
-          setPositions={setPositions}
-          transactions={transactions}
-          setTransactions={setTransactions}
-          onClose={() => setShowBuy(false)}
-        />
-      )}
-
-      {showSell && (
-        <SellModal
-          stock={{ ...stock, symbol }}
-          cash={cash}
-          setCash={setCash}
-          positions={positions}
-          setPositions={setPositions}
-          transactions={transactions}
-          setTransactions={setTransactions}
-          onClose={() => setShowSell(false)}
-        />
-      )}
 
       {showPriceAlertModal && (
         <PriceAlertModal
